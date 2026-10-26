@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<title>Yoklama PWA</title></head>
+<body>
+<h1>Sesli ve Kriptografik QR Yoklama</h1>
+<ul>
+  <li><a href="hoca.html">🎓 Hoca Uygulaması</a></li>
+  <li><a href="ogrenci.html">📱 Öğrenci Uygulaması</a></li>
+  <li><a href="rapor.html">📊 Rapor Ekranı</a></li>
+</ul>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body></html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hoca Yoklama</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+  #kod { font-size: 64px; font-weight: bold; letter-spacing: 8px; text-align: center; color: #0a6; }
+  #video { width: 100%; max-width: 420px; border: 2px solid #333; border-radius: 8px; }
+  #photo { max-width: 180px; border-radius: 8px; float: right; margin-left: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  #info { background: #f2f8f2; padding: 12px; border-radius: 8px; margin-top: 12px; min-height: 60px; }
+  .ok { color: #070; font-weight: bold; }
+  .err { color: #b00; font-weight: bold; }
+</style>
+</head>
+<body>
+<h2>Hoca Yoklama Paneli</h2>
+
+<div class="row">
+  <label>Ders:
+    <select id="dersSelect"></select>
+  </label>
+  <label>Hafta:
+    <select id="haftaSelect"></select>
+  </label>
+</div>
+
+<div class="row">
+  <button id="yayinBtn">Ses Yayınını Başlat</button>
+  <button id="kameraBtn">Kamerayı Aç</button>
+  <label><input type="checkbox" id="otoKamera" checked> Otomatik Kamera</label>
+  <a href="rapor.html" target="_blank">📊 Rapor Ekranı</a>
+</div>
+
+<div id="kod">----</div>
+<video id="video" autoplay playsinline muted style="display:none"></video>
+<canvas id="canvas" style="display:none"></canvas>
+
+<div id="info">QR bekleniyor…</div>
+
+<script src="lib/jsQR.min.js"></script>
+<script src="js/dtmf.js"></script>
+<script>
+const dersSelect = document.getElementById('dersSelect');
+const haftaSelect = document.getElementById('haftaSelect');
+const kodEl = document.getElementById('kod');
+const infoEl = document.getElementById('info');
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const kameraBtn = document.getElementById('kameraBtn');
+
+let students = [], courses = [];
+let currentCode = '';
+let yayinAktif = false;
+let audioCtx = null;
+let kameraStream = null;
+let qrLoopId = null;
+let timerId = null;
+
+// --- Veri yükle ---
+async function loadData() {
+  students = await (await fetch('data/students.json')).json();
+  courses  = await (await fetch('data/courses.json')).json();
+  courses.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.kod; o.textContent = `${c.kod} - ${c.ad}`;
+    dersSelect.appendChild(o);
+  });
+  for (let h = 1; h <= 14; h++) {
+    const o = document.createElement('option');
+    o.value = h; o.textContent = `Hafta ${h}`;
+    haftaSelect.appendChild(o);
+  }
+}
+
+// --- localStorage yardımcıları ---
+function getYoklama() {
+  return JSON.parse(localStorage.getItem('yoklama') || '{}');
+}
+function setYoklama(y) {
+  localStorage.setItem('yoklama', JSON.stringify(y));
+}
+function imzaAt(dersKod, hafta, ogrNo) {
+  const y = getYoklama();
+  y[dersKod] = y[dersKod] || {};
+  y[dersKod][hafta] = y[dersKod][hafta] || {};
+  if (y[dersKod][hafta][ogrNo]) return false; // zaten var
+  y[dersKod][hafta][ogrNo] = true;
+  setYoklama(y);
+  return true;
+}
+
+// --- Rastgele 4 haneli kod ---
+function rastgeleKod() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+// --- Ses yayını döngüsü ---
+async function yayinBaslat() {
+  if (yayinAktif) return;
+  yayinAktif = true;
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  // Otomatik kamera
+  if (document.getElementById('otoKamera').checked) {
+    await kameraAc();
+  }
+
+  const dongu = async () => {
+    if (!yayinAktif) return;
+    currentCode = rastgeleKod();
+    kodEl.textContent = currentCode;
+    await playCode(audioCtx, currentCode); // 4 × (650+350) ≈ 4 sn
+    // Tonlar arası ekstra bekleme: toplam 12-15 sn'de bir yeni kod
+    const ekstra = 8000 + Math.random() * 3000; // 8-11 sn ekstra → toplam ~12-15 sn
+    timerId = setTimeout(dongu, ekstra);
+  };
+  dongu();
+}
+
+function yayinDurdur() {
+  yayinAktif = false;
+  clearTimeout(timerId);
+  kodEl.textContent = '----';
+}
+
+// --- Kamera ---
+async function kameraAc() {
+  if (kameraStream) return;
+  try {
+    kameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+    video.srcObject = kameraStream;
+    video.style.display = 'block';
+    kameraBtn.textContent = 'Kamerayı Kapat';
+    qrDongusu();
+  } catch (e) {
+    infoEl.textContent = 'Kamera hatası: ' + e.message;
+  }
+}
+function kameraKapat() {
+  if (kameraStream) {
+    kameraStream.getTracks().forEach(t => t.stop());
+    kameraStream = null;
+  }
+  video.style.display = 'none';
+  kameraBtn.textContent = 'Kamerayı Aç';
+  cancelAnimationFrame(qrLoopId);
+  qrLoopId = null;
+}
+
+// --- QR okuma döngüsü ---
+function qrDongusu() {
+  if (!kameraStream) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height);
+    if (code) {
+      qrIsle(code.data);
+    }
+  }
+  qrLoopId = requestAnimationFrame(qrDongusu);
+}
+
+// --- QR içeriğini işle & doğrula ---
+function qrIsle(icerik) {
+  // Beklenen format: "ogrenciNo|kod"
+  const parts = icerik.split('|');
+  if (parts.length !== 2) { infoEl.innerHTML = '<span class="err">Geçersiz QR formatı</span>'; return; }
+  const [ogrNo, kod] = parts;
+
+  // 1) Kod eşleşmesi
+  if (kod !== currentCode) {
+    infoEl.innerHTML = `<span class="err">Kod eşleşmiyor (QR: ${kod}, Güncel: ${currentCode || '-'})</span>`;
+    return;
+  }
+
+  const dersKod = dersSelect.value;
+  const hafta = haftaSelect.value;
+  const ders = courses.find(c => c.kod === dersKod);
+  const ogr = students.find(s => s.no === ogrNo);
+
+  // 2) Öğrenci var mı?
+  if (!ogr) { infoEl.innerHTML = '<span class="err">Öğrenci bulunamadı</span>'; return; }
+
+  // 3) Derse kayıtlı mı?
+  if (!ders.ogrenciler.includes(ogrNo)) {
+    infoEl.innerHTML = `<span class="err">${ogr.ad} ${ogr.soyad} bu derse kayıtlı değil!</span>`;
+    return;
+  }
+
+  // 4) Tek imza kuralı
+  const basarili = imzaAt(dersKod, hafta, ogrNo);
+  if (!basarili) {
+    infoEl.innerHTML = `<span class="err">${ogr.ad} ${ogr.soyad} bu hafta zaten yoklamaya katıldı.</span>`;
+    return;
+  }
+
+  // 5) Başarılı → bilgi + fotoğraf
+  infoEl.innerHTML = `
+    <img id="photo" src="photos/${ogr.no}.jpeg" alt="${ogr.ad}"
+         onerror="this.style.display='none'">
+    <div class="ok">✅ Yoklama alındı</div>
+    <div><b>${ogr.ad} ${ogr.soyad}</b> (${ogr.no})</div>
+    <div>Bölüm: ${ogr.bolum}</div>
+    <div>Program: ${ogr.program} — Sınıf: ${ogr.sinif}</div>
+    <div>Ders: ${ders.kod} ${ders.ad} — Hafta ${hafta}</div>
+  `;
+
+  // Otomatik kamera kapat
+  if (document.getElementById('otoKamera').checked) {
+    kameraKapat();
+  }
+}
+
+// --- Butonlar ---
+document.getElementById('yayinBtn').onclick = () => {
+  if (yayinAktif) { yayinDurdur(); document.getElementById('yayinBtn').textContent = 'Ses Yayınını Başlat'; }
+  else { yayinBaslat(); document.getElementById('yayinBtn').textContent = 'Ses Yayınını Durdur'; }
+};
+kameraBtn.onclick = () => {
+  if (kameraStream) kameraKapat(); else kameraAc();
+};
+
+loadData();
+</script>
+</body>
+</html>

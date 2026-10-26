@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Rapor</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 16px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { border: 1px solid #ccc; padding: 6px; text-align: center; font-size: 13px; }
+  th { background: #eee; }
+  td.ad { text-align: left; white-space: nowrap; }
+  .tik { color: #070; font-weight: bold; }
+  .carpi { color: #b00; font-weight: bold; }
+</style>
+</head>
+<body>
+<h2>Haftalık Yoklama Raporu</h2>
+<select id="dersSelect"></select>
+<div id="tablo"></div>
+
+<script>
+let courses = [], students = [], yoklama = {};
+
+async function init() {
+  students = await (await fetch('data/students.json')).json();
+  courses  = await (await fetch('data/courses.json')).json();
+  yoklama  = JSON.parse(localStorage.getItem('yoklama') || '{}');
+  const sel = document.getElementById('dersSelect');
+  courses.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.kod; o.textContent = `${c.kod} - ${c.ad}`;
+    sel.appendChild(o);
+  });
+  sel.onchange = tabloCiz;
+  tabloCiz();
+}
+
+function tabloCiz() {
+  const dersKod = document.getElementById('dersSelect').value;
+  const ders = courses.find(c => c.kod === dersKod);
+  const kayit = yoklama[dersKod] || {};
+
+  let html = '<table><thead><tr><th>Öğrenci</th>';
+  for (let h = 1; h <= 14; h++) html += `<th>H${h}</th>`;
+  html += '<th>Toplam</th></tr></thead><tbody>';
+
+  ders.ogrenciler.forEach(no => {
+    const ogr = students.find(s => s.no === no);
+    if (!ogr) return;
+    let toplam = 0;
+    let row = `<tr><td class="ad">${ogr.ad} ${ogr.soyad} (${no})</td>`;
+    for (let h = 1; h <= 14; h++) {
+      const var_ = kayit[h] && kayit[h][no];
+      if (var_) toplam++;
+      row += `<td class="${var_ ? 'tik' : 'carpi'}">${var_ ? '✓' : '✗'}</td>`;
+    }
+    row += `<td><b>${toplam}</b></td></tr>`;
+    html += row;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('tablo').innerHTML = html;
+}
+
+init();
+</script>
+</body>
+</html>

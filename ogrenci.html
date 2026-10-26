@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Öğrenci Yoklama</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+  #qr { display: flex; justify-content: center; margin: 16px 0; }
+  .row { display: flex; gap: 8px; margin: 8px 0; }
+  input, button { padding: 10px; font-size: 16px; }
+  #status { font-weight: bold; color: #333; }
+</style>
+</head>
+<body>
+<h2>Öğrenci Yoklama</h2>
+
+<div class="row">
+  <input id="ogrNo" placeholder="Öğrenci No" value="2024001" />
+  <button id="startBtn">Dinlemeyi Başlat</button>
+</div>
+
+<div id="status">Mikrofon bekleniyor…</div>
+<div id="qr"></div>
+
+<h3>Manuel Kod Girişi</h3>
+<div class="row">
+  <input id="manuelKod" maxlength="4" placeholder="4 haneli kod" inputmode="numeric" />
+  <button id="manuelBtn">QR Oluştur</button>
+</div>
+
+<script src="lib/qrcode.min.js"></script>
+<script src="js/dtmf.js"></script>
+<script>
+const statusEl = document.getElementById('status');
+const qrEl = document.getElementById('qr');
+let qrObj = null;
+let audioCtx = null;
+let decoder = null;
+
+function ogrenciNo() { return document.getElementById('ogrNo').value.trim(); }
+
+function qrGuncelle(kod) {
+  const payload = `${ogrenciNo()}|${kod}`;
+  qrEl.innerHTML = '';
+  qrObj = new QRCode(qrEl, {
+    text: payload,
+    width: 260, height: 260,
+    correctLevel: QRCode.CorrectLevel.M
+  });
+  statusEl.textContent = `Kod: ${kod} — QR güncellendi`;
+}
+
+// Manuel giriş (fallback)
+document.getElementById('manuelBtn').onclick = () => {
+  const kod = document.getElementById('manuelKod').value.trim();
+  if (!/^\d{4}$/.test(kod)) { alert('4 haneli sayı giriniz'); return; }
+  qrGuncelle(kod);
+};
+
+// Sürekli dinleme (AudioWorklet yerine ScriptProcessor basit çözüm)
+document.getElementById('startBtn').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1,
+        sampleRate: 44100
+      }
+    });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = audioCtx.createMediaStreamSource(stream);
+    const proc = audioCtx.createScriptProcessor(1024, 1, 1);
+    decoder = new DTMFDecoder((kod) => qrGuncelle(kod));
+
+    proc.onaudioprocess = (e) => {
+      const data = e.inputBuffer.getChannelData(0);
+      // kopyala (buffer değişebilir)
+      const arr = new Float32Array(data);
+      decoder.feed(arr, audioCtx.sampleRate, performance.now());
+    };
+    src.connect(proc);
+    proc.connect(audioCtx.destination);
+    statusEl.textContent = 'Dinleniyor… (hocanın sesini bekleyin)';
+  } catch (err) {
+    statusEl.textContent = 'Mikrofon hatası: ' + err.message;
+  }
+};
+</script>
+</body>
+</html>

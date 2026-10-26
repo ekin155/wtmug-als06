@@ -1,0 +1,7 @@
+[
+  { "no": "2024001", "ad": "Ahmet",  "soyad": "Yılmaz",  "bolum": "Bilgisayar Mühendisliği", "program": "Lisans", "sinif": "2" },
+  { "no": "2024002", "ad": "Elif",   "soyad": "Kaya",    "bolum": "Yazılım Mühendisliği",    "program": "Lisans", "sinif": "3" },
+  { "no": "2024003", "ad": "Mehmet", "soyad": "Demir",   "bolum": "Elektrik-Elektronik",      "program": "Lisans", "sinif": "1" },
+  { "no": "2024004", "ad": "Zeynep", "soyad": "Şahin",   "bolum": "Bilgisayar Mühendisliği", "program": "Lisans", "sinif": "4" },
+  { "no": "2024005", "ad": "Can",    "soyad": "Öztürk",  "bolum": "Yapay Zekâ Mühendisliği", "program": "Lisans", "sinif": "2" }
+]

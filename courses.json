@@ -1,0 +1,6 @@
+[
+  { "kod": "BIL201", "ad": "Veri Yapıları",        "ogrenciler": ["2024001", "2024002", "2024004"] },
+  { "kod": "BIL305", "ad": "Web Programlama",       "ogrenciler": ["2024001", "2024002", "2024003", "2024005"] },
+  { "kod": "BIL410", "ad": "Mobil Uygulama Geliştirme", "ogrenciler": ["2024002", "2024004", "2024005"] },
+  { "kod": "BIL150", "ad": "Algoritma ve Programlama",  "ogrenciler": ["2024001", "2024003", "2024004"] }
+]
